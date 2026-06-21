@@ -1,0 +1,623 @@
+# Semantic Tool Registry
+# Describes every tool available to the Sheria ReAct agent.
+# Each tool entry includes purpose, best-fit/poor-fit cases, input/output contracts,
+# possible observation statuses, and suggested next moves.
+
+tools:
+
+  # ---------------------------------------------------------------------------
+  # KENYA LAW JUDGMENT SEARCH
+  # ---------------------------------------------------------------------------
+  - name: kenya_law_judgment_search
+    purpose: >-
+      Search the new Kenya Law website (new.kenyalaw.org) for Kenyan judgments
+      and case law. Returns a list of candidate judgment URLs with titles,
+      snippets, and metadata.
+    best_for:
+      - Kenyan case law
+      - Kenyan judgments
+      - Party names
+      - Neutral citations
+      - Court decisions
+      - Direct case-law queries
+    poor_fit_for:
+      - Foreign law
+      - General legal theory
+      - News
+      - Commentary
+      - Non-legal reports
+      - Statutes (use kenya_law_legislation_search)
+    input_contract:
+      query: string  # Search terms for the Kenya Law judgment index
+    output_contract:
+      candidates: list[SourceCandidate]  # May be empty
+    output_type: discovery_candidates
+    evidence_eligible: false  # Must be read first
+    possible_statuses:
+      - success_with_candidates: At least one candidate was found
+      - no_results: The search returned zero results
+      - results_unrelated: Results exist but appear unrelated to the query
+      - parser_error: The page loaded but could not be parsed for results
+      - network_error: The site was unreachable or returned an error
+      - rate_limited: The request was rate-limited
+      - source_unavailable: The Kenya Law site appears to be down
+    possible_errors:
+      - http_timeout
+      - http_403
+      - http_5xx
+      - parsing_failed
+      - empty_body
+    suggested_next_moves:
+      - Read promising candidates using kenya_law_read
+      - Refine query and retry
+      - Use case_specific_search for fuzzy case names
+      - Use brave_search to locate references
+      - Use official_kenya_domain_search for broader official sources
+      - Stop with limitation if no route remains
+    human_narrative_guidance: >-
+      Do not say "called Kenya Law API." Say something like:
+      "I'm starting with official Kenyan case law because this question depends on primary authorities."
+    developer_observability_fields:
+      - query
+      - candidate_count
+      - top_titles
+      - status
+      - error_type
+
+  # ---------------------------------------------------------------------------
+  # KENYA LAW LEGISLATION SEARCH
+  # ---------------------------------------------------------------------------
+  - name: kenya_law_legislation_search
+    purpose: >-
+      Search the new Kenya Law website (new.kenyalaw.org) for Kenyan statutes,
+      Acts, sections, chapters, and subsidiary legislation.
+    best_for:
+      - Statutes
+      - Acts of Parliament
+      - Legal procedures governed by legislation
+      - Section numbers
+      - Regulations
+      - Constitutional provisions
+    poor_fit_for:
+      - Case law or judgments
+      - Foreign legislation
+      - Commentary
+    input_contract:
+      query: string
+    output_contract:
+      candidates: list[SourceCandidate]
+    output_type: discovery_candidates
+    evidence_eligible: false
+    possible_statuses:
+      - success_with_candidates
+      - no_results
+      - results_unrelated
+      - parser_error
+      - network_error
+      - rate_limited
+    possible_errors:
+      - http_timeout
+      - http_403
+      - parsing_failed
+      - empty_body
+    suggested_next_moves:
+      - Read promising candidates using kenya_law_read
+      - Use brave_search for locating specific provisions
+      - Use official_kenya_domain_search for supplementary sources
+    human_narrative_guidance: >-
+      "I'm searching Kenya Law's legislation repository for the relevant statutory provisions."
+    developer_observability_fields:
+      - query
+      - candidate_count
+      - status
+
+  # ---------------------------------------------------------------------------
+  # KENYA LAW CASE RESOLVE
+  # ---------------------------------------------------------------------------
+  - name: kenya_law_case_resolve
+    purpose: >-
+      Resolve exact or near-exact Kenyan case citations and case titles.
+      Generates AKN URLs from citation metadata (court, year, number).
+      Generated URLs must be verified before they can become source candidates.
+    best_for:
+      - Neutral citations (e.g., [2024] KESC 45)
+      - Specific cases with court code references
+      - Exact case requests
+    poor_fit_for:
+      - Fuzzy case names (use case_specific_search)
+      - General discovery
+    input_contract:
+      citation: string  # e.g., "[2024] KESC 45" or "Petition 5 of 2020"
+      court: string | null  # e.g., "KESC", "KECA", "KEHC"
+      year: string | null
+      number: string | null
+      party_names: string | null
+    output_contract:
+      resolved_url: string | null
+      candidates: list[SourceCandidate]
+      verification_status: string
+    output_type: resolved_citation
+    evidence_eligible: false
+    possible_statuses:
+      - resolved_verified: URL exists and was confirmed fetchable
+      - generated_unverified: URL was reconstructed but not yet verified
+      - ambiguous: Multiple possible matches found
+      - not_found: No match could be resolved
+      - fetch_failed: URL was generated but could not be fetched
+    possible_errors:
+      - citation_parse_failed
+      - url_generation_failed
+      - verification_failed
+    suggested_next_moves:
+      - Fetch the resolved URL using fetch_url or kenya_law_read
+      - Fall back to case_specific_search
+      - Use brave_search with citation text
+    human_narrative_guidance: >-
+      "I'm resolving the specific citation to locate the official judgment."
+    developer_observability_fields:
+      - input_citation
+      - resolved_url
+      - verification_status
+      - candidate_count
+
+  # ---------------------------------------------------------------------------
+  # CASE-SPECIFIC SEARCH
+  # ---------------------------------------------------------------------------
+  - name: case_specific_search
+    purpose: >-
+      Search for a specific case using party fragments, case numbers, petition numbers,
+      and issue terms. More targeted than a general Kenya Law search.
+    best_for:
+      - Fuzzy case names
+      - Partial party names
+      - Remembered case descriptions
+      - Case numbers without citations
+    poor_fit_for:
+      - General legal theory
+      - Broad area research
+    input_contract:
+      query: string
+      parties: string | null
+      case_number: string | null
+      issues: list[string] | null
+    output_contract:
+      candidates: list[SourceCandidate]
+    output_type: discovery_candidates
+    evidence_eligible: false
+    possible_statuses:
+      - success_with_candidates
+      - no_results
+      - ambiguous
+      - parser_error
+    possible_errors:
+      - http_error
+      - parsing_failed
+    suggested_next_moves:
+      - Read found candidates
+      - Use kenya_law_case_resolve if citation metadata appears
+      - Use brave_search for broader discovery
+    human_narrative_guidance: >-
+      "I'm searching for the specific case using the details provided."
+    developer_observability_fields:
+      - query
+      - candidates_count
+      - top_matches
+
+  # ---------------------------------------------------------------------------
+  # OFFICIAL KENYA DOMAIN SEARCH
+  # ---------------------------------------------------------------------------
+  - name: official_kenya_domain_search
+    purpose: >-
+      Search across official Kenyan government, judiciary, parliamentary, and
+      regulatory domains (.go.ke) for official documents, reports, and publications.
+    best_for:
+      - Official non-Kenya Law material
+      - Regulator guidance
+      - Tribunal decisions
+      - Parliamentary material
+      - Gazettes
+      - Institutional statements
+      - KLRC publications
+      - AG's office opinions
+    poor_fit_for:
+      - Case law (use kenya_law_judgment_search)
+      - Statutes (use kenya_law_legislation_search)
+      - Foreign law
+    input_contract:
+      query: string
+    output_contract:
+      candidates: list[SourceCandidate]
+    output_type: discovery_candidates
+    evidence_eligible: false
+    possible_statuses:
+      - success_with_candidates
+      - no_results
+      - network_error
+    possible_errors:
+      - api_error
+      - rate_limited
+    suggested_next_moves:
+      - Fetch and read promising results
+      - Use brave_search if insufficient
+    human_narrative_guidance: >-
+      "I'm searching official Kenyan government and judiciary domains for authoritative sources."
+    developer_observability_fields:
+      - query
+      - candidate_count
+      - domains_covered
+
+  # ---------------------------------------------------------------------------
+  # BRAVE SEARCH
+  # ---------------------------------------------------------------------------
+  - name: brave_search
+    purpose: >-
+      Broad internet discovery using Brave Search API. Useful for general legal
+      questions, foreign law, comparative law, commentary, and locating official
+      sources that may not appear in Kenya Law.
+    best_for:
+      - General legal questions
+      - Foreign law
+      - Comparative law
+      - Reports and commentary
+      - Locating official sources
+      - Finding references that lead back to primary authorities
+      - Current/time-sensitive information
+    poor_fit_for:
+      - Direct Kenyan case-law citations (use Kenya Law tools first)
+      - Exhaustive statute search
+    input_contract:
+      query: string
+    output_contract:
+      candidates: list[SourceCandidate]
+    output_type: discovery_candidates
+    evidence_eligible: false
+    possible_statuses:
+      - success_with_candidates
+      - no_results
+      - rate_limited
+      - api_error
+    possible_errors:
+      - api_key_invalid
+      - quota_exceeded
+      - network_error
+    suggested_next_moves:
+      - Fetch and read promising candidates
+      - For official sources discovered, read and evaluate for evidence
+      - For blog/commentary sources, assess as persuasive/background only
+      - Refine query if results are too broad
+    human_narrative_guidance: >-
+      "I'm widening the search to find additional sources, including commentary and official publications."
+    developer_observability_fields:
+      - query
+      - candidate_count
+      - top_results
+
+  # ---------------------------------------------------------------------------
+  # GENERAL WEB FETCH
+  # ---------------------------------------------------------------------------
+  - name: general_web_fetch
+    purpose: >-
+      Fetch and extract readable text from any web URL. Handles HTML pages,
+      redirects, JavaScript-heavy pages, and various content types.
+    best_for:
+      - Reading any web page
+      - Fetching HTML content from discovered URLs
+      - Reading official documents from government sites
+    poor_fit_for:
+      - PDFs (use pdf_read)
+      - DOCX files (use docx_read)
+      - AKN XML (use akn_xml_read)
+    input_contract:
+      url: string
+    output_contract:
+      status: string
+      url: string
+      final_url: string
+      content_type: string
+      title: string
+      text_excerpt: string
+      full_text_reference: string
+      extraction_quality: string
+      error_type: string | null
+      error_message: string | null
+      attempts: list
+      suggested_alternatives: list[string]
+    output_type: read_content
+    evidence_eligible: true
+    possible_statuses:
+      - read_success: Full text was successfully extracted
+      - partial_read: Some text was extracted but may be incomplete
+      - unreadable: Page loaded but no readable text could be extracted
+      - blocked: The source blocked access
+      - not_found: HTTP 404
+      - timeout: Request timed out
+      - parser_error: Content was received but could not be parsed
+      - unsupported_format: Content type is not supported
+      - empty_body: Response had no body
+      - extraction_failed: Text extraction from HTML failed
+    possible_errors:
+      - http_403
+      - http_404
+      - http_5xx
+      - timeout
+      - connection_error
+      - dns_error
+      - ssl_error
+      - javascript_required
+    suggested_next_moves:
+      - Try PDF read if content is a PDF
+      - Try browser fetch for JS-heavy pages
+      - Search for an alternative URL
+    human_narrative_guidance: >-
+      "I'm reading the source to extract the relevant legal content."
+    developer_observability_fields:
+      - url
+      - status_code
+      - content_type
+      - extraction_method
+      - chars_extracted
+      - error_details
+
+  # ---------------------------------------------------------------------------
+  # KENYA LAW READ
+  # ---------------------------------------------------------------------------
+  - name: kenya_law_read
+    purpose: >-
+      Read a Kenya Law document page and extract structured metadata and text.
+      Attempts multiple formats: HTML body, AKN XML, PDF download, DOCX download.
+      Records each attempt for observability.
+    best_for:
+      - Reading Kenya Law judgment pages
+      - Reading Kenya Law legislation pages
+      - Extracting structured metadata from Kenya Law documents
+    poor_fit_for:
+      - Non-Kenya Law pages (use general_web_fetch)
+    input_contract:
+      url: string
+    output_contract:
+      status: string
+      url: string
+      title: string
+      court: string
+      date: string | null
+      neutral_citation: string | null
+      text_excerpt: string
+      full_text_reference: string
+      extraction_quality: string
+      attempts: list[dict]
+      error_type: string | null
+      error_message: string | null
+      suggested_alternatives: list[string]
+    output_type: read_content
+    evidence_eligible: true
+    possible_statuses:
+      - read_success
+      - partial_read
+      - unreadable
+      - blocked
+      - not_found
+      - parser_error
+    possible_errors:
+      - html_body_not_found
+      - akn_xml_fetch_failed
+      - pdf_download_failed
+      - docx_download_failed
+      - site_unreachable
+    suggested_next_moves:
+      - Try alternative formats (PDF, DOCX) automatically attempted
+      - Use general_web_fetch with old Kenya Law URL
+      - Use brave_search to find alternative source
+    human_narrative_guidance: >-
+      "I'm reading the official Kenya Law document. If the first format doesn't work, I'll check other available formats."
+    developer_observability_fields:
+      - url
+      - attempted_methods
+      - successful_method
+      - chars_extracted
+      - metadata_extracted
+
+  # ---------------------------------------------------------------------------
+  # AKN XML READ
+  # ---------------------------------------------------------------------------
+  - name: akn_xml_read
+    purpose: >-
+      Fetch and parse Akoma Ntoso (AKN) XML documents. AKN is the standard XML
+      format for legislative and judicial documents used by Kenya Law.
+    best_for:
+      - AKN XML documents from Kenya Law
+      - Structured legal document parsing
+      - Legislative documents in AKN format
+    poor_fit_for:
+      - HTML pages
+      - PDFs or DOCX files
+      - Non-AKN XML
+    input_contract:
+      url: string
+    output_contract:
+      status: string
+      url: string
+      title: string
+      xml_raw: string
+      text_excerpt: string
+      extraction_quality: string
+      error_type: string | null
+      error_message: string | null
+    output_type: read_content
+    evidence_eligible: true
+    possible_statuses:
+      - read_success
+      - not_found
+      - parser_error
+      - unsupported_format
+    possible_errors:
+      - http_error
+      - xml_parse_error
+      - not_akn_format
+    suggested_next_moves:
+      - Fall back to PDF or DOCX format
+      - Use general_web_fetch
+    human_narrative_guidance: >-
+      "I'm reading the official AKN XML format of the document."
+    developer_observability_fields:
+      - url
+      - chars_extracted
+      - parse_success
+
+  # ---------------------------------------------------------------------------
+  # PDF READ
+  # ---------------------------------------------------------------------------
+  - name: pdf_read
+    purpose: >-
+      Download and extract text from PDF files. Handles standard legal PDFs,
+      scanned documents (OCR where available), and multi-page PDFs.
+    best_for:
+      - PDF judgments from Kenya Law
+      - PDF statutes and regulations
+      - PDF reports and commentary
+      - Any PDF source discovered during research
+    poor_fit_for:
+      - HTML pages
+      - Scanned image-only PDFs without OCR
+      - Encrypted or password-protected PDFs
+    input_contract:
+      url: string
+    output_contract:
+      status: string
+      url: string
+      title: string | null
+      pages_extracted: int
+      text_excerpt: string
+      full_text_reference: string
+      extraction_quality: string
+      error_type: string | null
+      error_message: string | null
+      suggested_alternatives: list[string]
+    output_type: read_content
+    evidence_eligible: true
+    possible_statuses:
+      - read_success
+      - partial_read
+      - unreadable
+      - not_found
+      - blocked
+      - unsupported_format
+      - ocr_required
+    possible_errors:
+      - http_error
+      - pdf_parse_error
+      - encrypted_pdf
+      - empty_pdf
+      - image_only_pdf
+    suggested_next_moves:
+      - Try DOCX version if available
+      - Try browser fetch for HTML version
+      - Search for alternative source
+    human_narrative_guidance: >-
+      "I'm reading the PDF version of the document."
+    developer_observability_fields:
+      - url
+      - pages_extracted
+      - chars_extracted
+      - extraction_method
+
+  # ---------------------------------------------------------------------------
+  # DOCX READ
+  # ---------------------------------------------------------------------------
+  - name: docx_read
+    purpose: >-
+      Download and extract text from DOCX (Word) files. Handles standard legal
+      documents from Kenya Law and other official sources.
+    best_for:
+      - DOCX judgments from Kenya Law
+      - DOCX legislation from Kenya Law
+      - DOCX reports and memoranda
+    poor_fit_for:
+      - HTML pages
+      - PDFs
+      - Older .doc format (not .docx)
+    input_contract:
+      url: string
+    output_contract:
+      status: string
+      url: string
+      title: string | null
+      text_excerpt: string
+      full_text_reference: string
+      extraction_quality: string
+      error_type: string | null
+      error_message: string | null
+    output_type: read_content
+    evidence_eligible: true
+    possible_statuses:
+      - read_success
+      - partial_read
+      - unreadable
+      - not_found
+      - unsupported_format
+    possible_errors:
+      - http_error
+      - docx_parse_error
+      - empty_document
+      - corrupted_docx
+    suggested_next_moves:
+      - Try PDF version
+      - Try HTML version via general_web_fetch
+    human_narrative_guidance: >-
+      "I'm reading the DOCX version of the document."
+    developer_observability_fields:
+      - url
+      - chars_extracted
+      - extraction_method
+
+  # ---------------------------------------------------------------------------
+  # HTML READ / BROWSER FETCH
+  # ---------------------------------------------------------------------------
+  - name: html_read_browser_fetch
+    purpose: >-
+      Fetch HTML pages that require JavaScript rendering or where standard HTTP
+      fetch is insufficient. Uses Playwright headless browser for full page rendering.
+    best_for:
+      - JavaScript-heavy legal pages
+      - Pages that don't load content via standard HTTP
+      - Older Kenya Law (eKLR) pages
+      - Dynamic search result pages
+    poor_fit_for:
+      - PDFs or DOCX files
+      - Simple static HTML pages (use general_web_fetch)
+      - AKN XML (use akn_xml_read)
+    input_contract:
+      url: string
+    output_contract:
+      status: string
+      url: string
+      final_url: string
+      title: string
+      text_excerpt: string
+      full_text_reference: string
+      extraction_quality: string
+      error_type: string | null
+      error_message: string | null
+    output_type: read_content
+    evidence_eligible: true
+    possible_statuses:
+      - read_success
+      - partial_read
+      - unreadable
+      - blocked
+      - timeout
+      - browser_error
+    possible_errors:
+      - browser_launch_failed
+      - page_timeout
+      - javascript_error
+      - captcha_required
+    suggested_next_moves:
+      - Try general_web_fetch
+      - Search for alternative source
+    human_narrative_guidance: >-
+      "I'm fetching the page to extract the legal content."
+    developer_observability_fields:
+      - url
+      - browser_used
+      - wait_strategy
+      - chars_extracted

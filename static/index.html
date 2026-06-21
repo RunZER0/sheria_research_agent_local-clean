@@ -1,0 +1,2046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbit Legal IDE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    <style>
+        :root {
+            --bg-color: #0d0d0d;
+            --surface: #161616;
+            --border: #222222;
+            --border-focus: #3a3a3c;
+            --text-main: #f3f4f6;
+            --text-muted: #8e8e93;
+            --brand: #2f80ed;
+            --success: #34c759;
+            --warning: #ff9500;
+            --error: #ff3b30;
+        }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Main layout: sidebar left + chat center */
+.app-layout {
+    display: flex;
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    flex: 1;
+    overflow: hidden;
+}
+
+#sessions-panel {
+    width: 260px;
+    min-width: 260px;
+    border-right: 1px solid var(--border);
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+}
+
+#sessions-panel h3 {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.chat-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.chat-column header {
+    padding: 18px 40px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+    font-size: 1.05rem;
+    letter-spacing: -0.3px;
+    background: var(--bg-color);
+}
+
+#chat-container {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 36px;
+    max-width: 840px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+        .message-block {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            animation: fadeIn 0.25s ease-out;
+        }
+
+        .user-message {
+            align-self: flex-end;
+            background: var(--surface);
+            padding: 14px 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            max-width: 75%;
+            font-size: 0.95rem;
+        }
+
+        .agent-message {
+            align-self: flex-start;
+            width: 100%;
+        }
+
+        /* Continuous Vertical Pipeline */
+        .workspace-wrapper {
+            border-left: 2px solid var(--border);
+            margin-left: 6px;
+            padding-left: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            transition: max-height 0.4s ease, opacity 0.3s;
+        }
+
+        .workspace-wrapper.run-collapsed {
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            border: none;
+        }
+
+        /* Clickable Macro Step Accordion */
+        .macro-node {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .macro-node::before {
+            content: '';
+            position: absolute;
+            left: -29px;
+            top: 8px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #3a3a3c;
+            border: 2px solid var(--bg-color);
+            transition: all 0.25s ease;
+        }
+
+        .macro-node.active::before {
+            background: var(--brand);
+            box-shadow: 0 0 8px var(--brand);
+        }
+
+        .macro-summary {
+            font-size: 0.92rem;
+            font-weight: 400;
+            color: var(--text-main);
+            line-height: 1.5;
+            transition: color 0.2s;
+        }
+
+        .macro-node:hover .macro-summary {
+            color: var(--brand);
+        }
+
+        /* Granular Substep Area */
+        .sub-container {
+            margin-top: 6px;
+            padding-left: 14px;
+            border-left: 1px dashed var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow: hidden;
+            transition: max-height 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+            max-height: 1000px; /* Fully expanded default state */
+        }
+
+        .sub-container.collapsed {
+            max-height: 0 !important;
+            margin: 0;
+            padding: 0;
+            border: none;
+        }
+
+        .sub-step {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        /* Master Workspace Toggle */
+        .master-toggle {
+            display: none;
+            align-self: flex-start;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+            margin-bottom: 12px;
+        }
+
+        .master-toggle:hover {
+            color: var(--text-main);
+            border-color: var(--border-focus);
+            background: var(--surface);
+        }
+
+        /* Final Rich Answer Canvas */
+        .answer-container {
+            position: relative;
+            width: 100%;
+        }
+
+        .final-answer {
+            font-size: 0.98rem;
+            color: var(--text-main);
+            line-height: 1.75;
+        }
+
+        .final-answer p { margin-bottom: 14px; }
+        .final-answer ul, .final-answer ol { margin-left: 20px; margin-bottom: 14px; }
+        .final-answer li { margin-bottom: 6px; }
+        .final-answer strong { font-weight: 600; color: #fff; }
+
+        /* Citation Pill Clusters */
+        .citation-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: #2a2a2b;
+            border: 1px solid #3c3c3c;
+            color: #d1d5db;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin: 0 4px;
+            vertical-align: middle;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            line-height: 1.2;
+            text-decoration: none;
+        }
+
+        .citation-pill:hover {
+            background: #3c3c3c;
+            color: #ffffff;
+            border-color: #555555;
+        }
+
+        .citation-pill svg { width: 11px; height: 11px; stroke: #9ca3af; }
+        .citation-plus { color: #9ca3af; font-size: 0.7rem; font-weight: 600; padding-left: 2px; }
+
+        /* Sleek Copy Bar Controls */
+        .copy-action-bar {
+            display: flex;
+            justify-content: flex-start;
+            margin-top: 16px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .answer-container:hover .copy-action-bar,
+        .copy-action-bar.visible {
+            opacity: 1;
+        }
+
+        .copy-btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            color: var(--text-main);
+            border-color: var(--border-focus);
+        }
+
+        /* Input Controls Bar */
+        .input-frame {
+            padding: 30px 40px;
+            border-top: 1px solid var(--border);
+            background: var(--bg-color);
+            display: flex;
+            justify-content: center;
+        }
+
+        .input-box {
+            display: flex;
+            max-width: 840px;
+            width: 100%;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            transition: border-color 0.2s;
+        }
+
+        .input-box:focus-within {
+            border-color: var(--border-focus);
+        }
+
+        textarea {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            padding: 16px;
+            font-family: inherit;
+            font-size: 0.95rem;
+            resize: none;
+            outline: none;
+            height: 54px;
+        }
+
+        button.send-btn {
+            background: transparent;
+            color: var(--text-main);
+            border: none;
+            padding: 0 24px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        button.send-btn:hover { color: var(--brand); }
+        button.send-btn:disabled { color: var(--border); cursor: not-allowed; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* === Auth Page === */
+        .auth-page {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            width: 100vw;
+            background: var(--bg-color);
+        }
+        .auth-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 40px;
+            width: 380px;
+            max-width: 90vw;
+        }
+        .auth-box h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: var(--text-main);
+        }
+        .auth-box p.sub {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 28px;
+        }
+        .auth-box label {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            margin-top: 16px;
+        }
+        .auth-box input {
+            width: 100%;
+            background: #000;
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .auth-box input:focus {
+            border-color: var(--border-focus);
+        }
+        .auth-box .auth-btn {
+            width: 100%;
+            background: var(--brand);
+            color: #fff;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 24px;
+            transition: opacity 0.2s;
+            font-family: inherit;
+        }
+        .auth-box .auth-btn:hover { opacity: 0.9; }
+        .auth-box .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .auth-box .auth-toggle {
+            background: transparent;
+            border: none;
+            color: var(--brand);
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-family: inherit;
+            margin-top: 16px;
+            display: block;
+            width: 100%;
+            text-align: center;
+        }
+        .auth-box .auth-toggle:hover { text-decoration: underline; }
+        .auth-box .auth-error {
+            color: var(--error);
+            font-size: 0.8rem;
+            margin-top: 12px;
+            display: none;
+        }
+        .auth-box .auth-loader {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 20px;
+        }
+        .auth-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 20px 0 16px;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+        .auth-divider::before, .auth-divider::after {
+            content: '';
+            flex: 1;
+            border-top: 1px solid var(--border);
+        }
+        .google-btn {
+            width: 100%;
+            background: #fff;
+            color: #1f1f1f;
+            border: 1px solid #dadce0;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: background 0.2s;
+        }
+        .google-btn:hover { background: #f8f9fa; }
+        .google-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .user-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            padding: 8px 12px;
+            border-top: 1px solid var(--border);
+            margin-top: auto;
+        }
+        .user-badge button {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        .user-badge button:hover {
+            color: var(--error);
+            border-color: var(--error);
+        }
+        .user-badge .email {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        /* === Workspace Panel === */
+        #workspace-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        #workspace-panel .ws-btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+            text-align: left;
+            width: 100%;
+        }
+        #workspace-panel .ws-btn:hover {
+            border-color: var(--border-focus);
+            background: #1e1e1e;
+        }
+        #workspace-file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            max-height: 240px;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+        .ws-file-entry {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            padding: 3px 8px;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .ws-file-entry .ws-icon { width: 14px; text-align: center; flex-shrink: 0; }
+        .ws-file-entry .ws-size { font-size: 0.7rem; color: #555; margin-left: auto; flex-shrink: 0; }
+        #workspace-status {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            padding: 0 8px;
+        }
+        #workspace-err {
+            font-size: 0.75rem;
+            color: var(--error);
+            padding: 4px 8px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Auth Page (shown when not logged in) -->
+    <div id="auth-page" class="auth-page">
+        <div class="auth-box">
+            <h1>Orbit Legal IDE</h1>
+            <p class="sub" id="auth-subtitle">Sign in to your workspace</p>
+
+            <div id="auth-form">
+                <label for="auth-email">Email</label>
+                <input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email">
+                <label for="auth-password">Password</label>
+                <input type="password" id="auth-password" placeholder="Min 6 characters" autocomplete="current-password">
+
+                <button class="auth-btn" id="auth-submit-btn">Sign In</button>
+                <button class="auth-toggle" id="auth-toggle-btn">Create an account</button>
+                <div class="auth-error" id="auth-error"></div>
+
+                <div class="auth-divider">or continue with</div>
+                <button class="google-btn" id="google-btn">
+                    <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                    Sign in with Google
+                </button>
+            </div>
+
+            <div id="auth-loader" class="auth-loader" style="display:none;">Checking authentication...</div>
+        </div>
+    </div>
+
+    <!-- Main App (shown when logged in) -->
+    <div id="app-main" class="app-layout" style="display:none;">
+        <!-- Left Sidebar: Sessions + Workspace + User -->
+        <aside id="sessions-panel">
+            <!-- Recent Research Sessions -->
+            <div>
+                <h3>Recent Research</h3>
+                <div id="sessions-list" style="display:flex; flex-direction:column; gap:6px; max-height:300px; overflow:auto;"></div>
+            </div>
+
+            <!-- Workspace Panel -->
+            <div id="workspace-panel">
+                <h3>Workspace</h3>
+                <button class="ws-btn" id="ws-pick-btn">📂 Pick Workspace Folder</button>
+                <button class="ws-btn" id="ws-sync-btn" disabled>🔄 Sync to Cloud</button>
+                <div id="ws-folder-name" class="ws-file-entry" style="color:var(--brand);display:none;"></div>
+                <div id="workspace-file-list">
+                    <div class="ws-file-entry" style="color:#555;">Select a folder to begin.</div>
+                </div>
+                <div id="ws-file-status" style="display:none;font-size:0.75rem;color:var(--brand);padding:4px 8px;"></div>
+                <div id="workspace-status" style="font-size:0.75rem;color:var(--text-muted);padding:0 8px;">No workspace connected.</div>
+                <div id="ws-quota" style="font-size:0.7rem;color:#555;padding:2px 8px;"></div>
+                <div id="workspace-err" style="display:none;font-size:0.75rem;color:var(--error);padding:4px 8px;"></div>
+                <div style="display:flex;gap:6px;padding:4px 8px;">
+                    <button id="ws-restore-btn" class="ws-btn" style="display:none;font-size:0.72rem;">Restore Sync</button>
+                    <button id="ws-disconnect-btn" class="ws-btn" style="font-size:0.72rem;color:var(--error);">Disconnect</button>
+                </div>
+            </div>
+
+            <!-- User Badge at bottom of sidebar -->
+            <div class="user-badge">
+                <span class="email" id="user-email"></span>
+                <button id="logout-btn">Sign Out</button>
+            </div>
+        </aside>
+
+        <!-- Center: Chat -->
+        <div class="chat-column">
+            <header>Orbit Legal IDE</header>
+
+            <div id="chat-container">
+                <div class="message-block agent-message">
+                    <div class="final-answer"><p>System online. Provide a legal query or drop files into your workspace to begin.</p></div>
+                </div>
+            </div>
+
+            <div class="input-frame">
+                <div class="control-bar" style="display: flex; gap: 16px; max-width: 840px; width: 100%; padding: 0 10px 10px 10px; font-size: 0.85rem; color: var(--text-muted);">
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                        <input type="checkbox" id="deep-research-toggle"> ⚡ Deep Research Mode
+                    </label>
+                    <button id="mic-btn" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        🎤 Record Voice Note
+                    </button>
+                </div>
+                <div class="input-box">
+                    <textarea id="prompt-input" placeholder="Type your legal query..." onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendQuery(); }"></textarea>
+                    <button id="send-btn" class="send-btn" onclick="sendQuery()">Execute</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── Supabase Auth ─────────────────────────────────────────────────
+        let supabaseClient = null;
+        let currentUser = null;
+        let authAccessToken = null;
+
+        async function initSupabase() {
+            try {
+                const resp = await fetch('/api/config');
+                const cfg = await resp.json();
+                if (!cfg.supabase_url || !cfg.supabase_anon_key) {
+                    document.getElementById('auth-error').textContent = 'Supabase not configured on server.';
+                    document.getElementById('auth-error').style.display = 'block';
+                    return;
+                }
+                supabaseClient = supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
+                // Check existing session
+                const { data: { session }, error } = await supabaseClient.auth.getSession();
+                if (error) throw error;
+                if (session) {
+                    currentUser = session.user;
+                    authAccessToken = session.access_token;
+                    showApp();
+                } else {
+                    showAuth();
+                }
+            } catch (e) {
+                document.getElementById('auth-error').textContent = 'Auth init failed: ' + e.message;
+                document.getElementById('auth-error').style.display = 'block';
+            }
+        }
+
+        // ── Auth UI ───────────────────────────────────────────────────────
+
+        let authMode = 'login';  // 'login' | 'signup'
+
+        function showAuth() {
+            document.getElementById('auth-page').style.display = 'flex';
+            document.getElementById('app-main').style.display = 'none';
+            document.getElementById('auth-loader').style.display = 'none';
+            document.getElementById('auth-form').style.display = 'block';
+        }
+
+        function showApp() {
+            document.getElementById('auth-page').style.display = 'none';
+            document.getElementById('app-main').style.display = 'flex';
+            if (currentUser) {
+                document.getElementById('user-email').textContent = currentUser.email || currentUser.id;
+                // Set session ID from auth user
+                sessionId = currentUser.id;
+            }
+            // Initialize the rest of the app
+            loadSessions();
+            loadSessionMessages(sessionId).catch(() => {});
+            restoreWorkspaceHandle();
+            refreshManifestUI();
+            refreshQuotaUI();
+        }
+
+        function toggleAuthMode() {
+            const toggleBtn = document.getElementById('auth-toggle-btn');
+            const submitBtn = document.getElementById('auth-submit-btn');
+            const subtitle = document.getElementById('auth-subtitle');
+            if (authMode === 'login') {
+                authMode = 'signup';
+                subtitle.textContent = 'Create your account';
+                submitBtn.textContent = 'Create Account';
+                toggleBtn.textContent = 'Already have an account? Sign in';
+            } else {
+                authMode = 'login';
+                subtitle.textContent = 'Sign in to your workspace';
+                submitBtn.textContent = 'Sign In';
+                toggleBtn.textContent = 'Create an account';
+            }
+            document.getElementById('auth-error').style.display = 'none';
+        }
+
+        async function handleAuth() {
+            const email = document.getElementById('auth-email').value.trim();
+            const password = document.getElementById('auth-password').value;
+            const errEl = document.getElementById('auth-error');
+            const submitBtn = document.getElementById('auth-submit-btn');
+
+            if (!email || !password) {
+                errEl.textContent = 'Email and password are required.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (password.length < 6) {
+                errEl.textContent = 'Password must be at least 6 characters.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = authMode === 'login' ? 'Signing in...' : 'Creating account...';
+            errEl.style.display = 'none';
+
+            try {
+                let result;
+                if (authMode === 'login') {
+                    result = await supabaseClient.auth.signInWithPassword({ email, password });
+                } else {
+                    result = await supabaseClient.auth.signUp({ email, password });
+                }
+                if (result.error) throw result.error;
+
+                if (authMode === 'signup' && result.data?.user?.identities?.length === 0) {
+                    errEl.textContent = 'An account with this email already exists. Sign in instead.';
+                    errEl.style.display = 'block';
+                    authMode = 'login';
+                    document.getElementById('auth-submit-btn').textContent = 'Sign In';
+                    document.getElementById('auth-toggle-btn').textContent = 'Create an account';
+                    document.getElementById('auth-subtitle').textContent = 'Sign in to your workspace';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Sign In';
+                    return;
+                }
+
+                if (result.data?.session) {
+                    currentUser = result.data.session.user;
+                    authAccessToken = result.data.session.access_token;
+                    showApp();
+                } else if (authMode === 'signup') {
+                    // Email confirmation required
+                    errEl.textContent = 'Check your email for a confirmation link.';
+                    errEl.style.display = 'block';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Create Account';
+                }
+            } catch (e) {
+                errEl.textContent = e.message;
+                errEl.style.display = 'block';
+                submitBtn.disabled = false;
+                submitBtn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
+            }
+        }
+
+        async function handleGoogleSignIn() {
+            const btn = document.getElementById('google-btn');
+            btn.disabled = true;
+            btn.textContent = 'Redirecting to Google...';
+            try {
+                const { error } = await supabaseClient.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: {
+                        redirectTo: window.location.origin
+                    }
+                });
+                if (error) throw error;
+                // Page will redirect — no further action needed
+            } catch (e) {
+                document.getElementById('auth-error').textContent = 'Google sign-in failed: ' + e.message;
+                document.getElementById('auth-error').style.display = 'block';
+                btn.disabled = false;
+                btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24">...</svg> Sign in with Google`;
+            }
+        }
+
+        async function handleLogout() {
+            await supabaseClient.auth.signOut();
+            currentUser = null;
+            authAccessToken = null;
+            document.getElementById('auth-email').value = '';
+            document.getElementById('auth-password').value = '';
+            authMode = 'login';
+            document.getElementById('auth-submit-btn').textContent = 'Sign In';
+            document.getElementById('auth-toggle-btn').textContent = 'Create an account';
+            document.getElementById('auth-subtitle').textContent = 'Sign in to your workspace';
+            showAuth();
+        }
+
+        // ── Wire auth UI ──────────────────────────────────────────────────
+
+        document.getElementById('auth-submit-btn').addEventListener('click', handleAuth);
+        document.getElementById('auth-toggle-btn').addEventListener('click', toggleAuthMode);
+        document.getElementById('google-btn').addEventListener('click', handleGoogleSignIn);
+        document.getElementById('logout-btn').addEventListener('click', handleLogout);
+        ['keydown'].forEach(ev => {
+            document.getElementById('auth-password').addEventListener(ev, (e) => {
+                if (e.key === 'Enter') handleAuth();
+            });
+        });
+
+        // ── Legacy session ID (fallback if auth not configured) ───────────
+        const SESSION_STORAGE_KEY = 'sheria_session_id';
+        let sessionId = localStorage.getItem(SESSION_STORAGE_KEY);
+        if (!sessionId) {
+            sessionId = "sess_" + Math.random().toString(36).substring(2, 9);
+            localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+        }
+
+        // Bootstrap: start auth
+        initSupabase().catch(console.error);
+        const chatContainer = document.getElementById('chat-container');
+        const inputField = document.getElementById('prompt-input');
+        const sendBtn = document.getElementById('send-btn');
+        const deepResearchToggle = document.getElementById('deep-research-toggle');
+        const micBtn = document.getElementById('mic-btn');
+        let currentClarificationQuestions = null;
+        let workspaceFiles = [];          // File tree for agent workspace awareness
+
+        // Sessions UI elements
+        const sessionsList = document.getElementById('sessions-list');
+
+        async function loadSessions() {
+            try {
+                const res = await fetch('/api/conversations/sessions');
+                if (!res.ok) return;
+                const items = await res.json();
+                sessionsList.innerHTML = '';
+                items.forEach(s => {
+                    const el = document.createElement('button');
+                    el.className = 'copy-btn';
+                    el.style.justifyContent = 'space-between';
+                    el.style.width = '100%';
+                    el.style.textAlign = 'left';
+                    el.style.padding = '8px 10px';
+                    el.textContent = `${s.session_id} · ${s.updated_at ? new Date(s.updated_at).toLocaleString() : ''}`;
+                    el.onclick = async () => {
+                        localStorage.setItem(SESSION_STORAGE_KEY, s.session_id);
+                        sessionId = s.session_id;
+                        await loadSessionMessages(s.session_id);
+                    };
+                    sessionsList.appendChild(el);
+                });
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        async function loadSessionMessages(session_id) {
+            try {
+                const res = await fetch(`/api/conversations/messages/${encodeURIComponent(session_id)}`);
+                if (!res.ok) return;
+                const msgs = await res.json();
+                chatContainer.innerHTML = '';
+                msgs.forEach(m => {
+                    const b = document.createElement('div');
+                    b.className = m.role === 'user' ? 'message-block user-message' : 'message-block agent-message';
+                    b.textContent = m.content;
+                    chatContainer.appendChild(b);
+                });
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        // Mic / voice note recording button
+        micBtn.onclick = async () => {
+            let input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'audio/*';
+            input.onchange = async () => {
+                const file = input.files[0];
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                micBtn.innerHTML = "⏳ Transcribing via Groq...";
+                try {
+                    const res = await fetch('/api/audio/transcribe', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    
+                    if (data.transcript) {
+                        document.getElementById('prompt-input').value = data.transcript;
+                        micBtn.innerHTML = "🎤 Record Voice Note";
+                    } else {
+                        micBtn.innerHTML = "❌ Transcription failed";
+                    }
+                } catch {
+                    micBtn.innerHTML = "❌ Transcription failed";
+                }
+            };
+            input.click();
+        };
+
+        // Main operational milestones that trigger narrative summary updates
+        const MACRO_STEPS = [
+            "run_started", "planning", "plan_ready", "searching", 
+            "reading_source", "answering", "verifying", "repairing", 
+            "answer_replaced", "verification_result", "followup_searching", "basis_assessed",
+            "clarification_requested", "generating_case_summary", "case_summary_ready",
+            "document_work_state", "document_work_finished",
+            "document_export_success", "document_export_finished",
+            "research_work_state"
+        ];
+
+        function formatCitations(text) {
+            const citationClusterRegex = /(?:\[[A-Za-z0-9_]+\]\s*)+/g;
+            return text.replace(citationClusterRegex, (match) => {
+                const ids = [...match.matchAll(/\[([A-Za-z0-9_]+)\]/g)];
+                if (ids.length === 0) return match;
+                
+                let firstId = ids[0][1];
+                let displayTitle = firstId.includes('_S') ? firstId.split('_S')[1] : firstId.replace('S', '');
+                
+                let pillHtml = `<span class="citation-pill" title="Sources: ${ids.map(i => i[1]).join(', ')}">`;
+                pillHtml += `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"></path><path d="M16 3h5v5"></path><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"></path></svg>`;
+                pillHtml += `Source ${displayTitle}`;
+                if (ids.length > 1) {
+                    pillHtml += `<span class="citation-plus">+${ids.length - 1}</span>`;
+                }
+                pillHtml += `</span>`;
+                return pillHtml;
+            });
+        }
+
+    async function resumeExecutionWithAnswers(originalMessage, answers) {
+        inputField.disabled = true;
+        sendBtn.disabled = true;
+
+        const agentBlock = document.createElement('div');
+        agentBlock.className = 'message-block agent-message';
+        
+        const masterToggle = document.createElement('button');
+        masterToggle.className = 'master-toggle';
+        masterToggle.innerHTML = 'Show Technical Workspace';
+        
+        const workspaceWrapper = document.createElement('div');
+        workspaceWrapper.className = 'workspace-wrapper';
+
+        const answerContainer = document.createElement('div');
+        answerContainer.className = 'answer-container';
+        const answerBox = document.createElement('div');
+        answerBox.className = 'final-answer';
+        const copyBar = document.createElement('div');
+        copyBar.className = 'copy-action-bar';
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-btn';
+        copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copy Answer`;
+        
+        let rawMarkdownText = "";
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(rawMarkdownText || answerBox.innerText);
+            copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg> <span style="color: var(--success)">Copied!</span>`;
+            setTimeout(() => {
+                copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copy Answer`;
+            }, 1600);
+        };
+        copyBar.appendChild(copyBtn);
+        answerContainer.appendChild(answerBox);
+        answerContainer.appendChild(copyBar);
+
+        masterToggle.onclick = () => {
+            workspaceWrapper.classList.toggle('run-collapsed');
+            masterToggle.innerHTML = workspaceWrapper.classList.contains('run-collapsed') ? 'Show Technical Workspace' : 'Hide Technical Workspace';
+        };
+
+        agentBlock.appendChild(masterToggle);
+        agentBlock.appendChild(workspaceWrapper);
+        agentBlock.appendChild(answerContainer);
+        chatContainer.appendChild(agentBlock);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        let currentActiveSubContainer = null;
+        let currentActiveMacroNode = null;
+
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    message: originalMessage,
+                    kenya_legal_mode: true,
+                    strict_mode: true,
+                    deep_research: deepResearchToggle ? deepResearchToggle.checked : false,
+                    clarification_answers: answers,
+                    workspace_tree: workspaceFiles
+                })
+            });
+
+            if (!response.ok) {
+                let errorDetail = `Server returned ${response.status}`;
+                try {
+                    const errBody = await response.json();
+                    if (errBody.detail) errorDetail = errBody.detail;
+                } catch {}
+                throw new Error(`Backend error: ${errorDetail}`);
+            }
+
+            if (!response.body) {
+                throw new Error('Backend returned an empty body. The server may have crashed or is not a streaming endpoint. Make sure the FastAPI backend is running.');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                
+                buffer += decoder.decode(value, { stream: true });
+                let lines = buffer.split('\n\n');
+                buffer = lines.pop();
+
+                for (let line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = JSON.parse(line.substring(6));
+                        
+                        if (data.type === "answer_token") {
+                            rawMarkdownText += data.payload.token;
+                            const formattedMarkdown = formatCitations(rawMarkdownText);
+                            answerBox.innerHTML = marked.parse(formattedMarkdown);
+                        } 
+                        else if (data.type === "run_finished") {
+                            if (currentActiveSubContainer) currentActiveSubContainer.classList.add('collapsed');
+                            if (currentActiveMacroNode) currentActiveMacroNode.classList.remove('active');
+                            workspaceWrapper.classList.add('run-collapsed');
+                            masterToggle.style.display = 'block';
+                            copyBar.classList.add('visible');
+                        }
+                        else if (MACRO_STEPS.includes(data.type)) {
+                            if (currentActiveSubContainer) currentActiveSubContainer.classList.add('collapsed');
+                            if (currentActiveMacroNode) currentActiveMacroNode.classList.remove('active');
+
+                            const macroNode = document.createElement('div');
+                            macroNode.className = 'macro-node active';
+                            currentActiveMacroNode = macroNode;
+
+                            let narrativeText = data.state_summary || data.summary;
+                            if (data.type === 'basis_assessed') {
+                                narrativeText = `I have evaluated the evidence and assessed the basis strength as ${data.payload.basis_strength.replace('_', ' ').toUpperCase()}.`;
+                            }
+
+                            macroNode.innerHTML = `<span class="macro-summary">${narrativeText}</span>`;
+
+                            const subContainer = document.createElement('div');
+                            subContainer.className = 'sub-container';
+                            macroNode.appendChild(subContainer);
+
+                            if (data.type === 'clarification_requested') {
+                                currentClarificationQuestions = data.payload.questions;
+                                const formBlock = document.createElement('div');
+                                formBlock.style.padding = "16px";
+                                formBlock.style.background = "var(--surface)";
+                                formBlock.style.borderRadius = "8px";
+                                formBlock.innerHTML = `<span style="color: var(--warning); margin-bottom: 10px; display:block; font-weight:600;">Clarification Parameters Needed</span>`;
+                                currentClarificationQuestions.forEach((q, idx) => {
+                                    formBlock.innerHTML += `<div style="margin-bottom: 10px;"><label style="display:block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-main);">${q}</label><input type="text" id="clarify-ans-${idx}" style="width: 100%; background: #000; border: 1px solid var(--border); color: #fff; padding: 6px; border-radius: 4px; font-size: 0.85rem;"></div>`;
+                                });
+                                const submitBtn = document.createElement('button');
+                                submitBtn.className = 'copy-btn';
+                                submitBtn.style.marginTop = "6px";
+                                submitBtn.textContent = "Submit Parameters & Resume";
+                                submitBtn.onclick = async () => {
+                                    let newAnswers = {};
+                                    currentClarificationQuestions.forEach((q, idx) => {
+                                        newAnswers[q] = document.getElementById(`clarify-ans-${idx}`).value;
+                                    });
+                                    formBlock.remove();
+                                    resumeExecutionWithAnswers(originalMessage, newAnswers);
+                                };
+                                formBlock.appendChild(submitBtn);
+                                subContainer.appendChild(formBlock);
+                            }
+
+                            if (data.type === 'case_summary_ready') {
+                                const summaryBlock = document.createElement('div');
+                                summaryBlock.className = 'sub-step';
+                                summaryBlock.style.borderLeft = "2px solid var(--brand)";
+                                summaryBlock.style.paddingLeft = "10px";
+                                summaryBlock.style.margin = "10px 0";
+                                summaryBlock.innerHTML = `<b>📜 Volitional Brief [${data.title}]:</b><br>${marked.parse(data.payload.summary)}`;
+                                subContainer.appendChild(summaryBlock);
+                            }
+
+                            // Special rendering: document workflow state transitions
+                            if (data.type === 'document_work_state') {
+                                const docNode = document.createElement('div');
+                                docNode.className = 'sub-step';
+                                docNode.style.borderLeft = "2px solid var(--brand)";
+                                docNode.style.paddingLeft = "10px";
+                                docNode.style.margin = "10px 0";
+                                docNode.innerHTML = `🖨️ <b>${data.title}:</b> ${data.state_summary || data.summary}`;
+                                subContainer.appendChild(docNode);
+                            }
+
+                            // Special rendering: document workflow finished
+                            if (data.type === 'document_work_finished') {
+                                const docFinish = document.createElement('div');
+                                docFinish.className = 'sub-step';
+                                docFinish.style.borderLeft = "2px solid var(--success)";
+                                docFinish.style.paddingLeft = "10px";
+                                docFinish.style.margin = "10px 0";
+                                const payload = data.payload || {};
+                                const outputs = payload.generated_outputs ? payload.generated_outputs.join(', ') : '(check payload)';
+                                docFinish.innerHTML = `✅ <b>${data.title}:</b> ${data.summary}<br><span style="font-size:0.75rem; color: var(--text-muted);">Outputs: ${outputs} | Verified: ${payload.verification_passed}</span>`;
+                                subContainer.appendChild(docFinish);
+                            }
+
+                            // Special rendering: download buttons for compiled artifacts
+                            if (data.type === 'document_export_success') {
+                                const exportNode = document.createElement('div');
+                                let buttonsHtml = `
+                                    <span class="macro-summary" style="color: var(--success)">📥 Download Compiled Artifacts</span>
+                                    <div style="display: flex; gap: 12px; margin-top: 10px;">
+                                        <a href="${data.payload.docx_url}" download style="text-decoration: none;">
+                                            <button class="copy-btn" style="color: var(--text-main); border-color: var(--border-focus);">
+                                                📄 Download Word (.docx)
+                                            </button>
+                                        </a>
+                                `;
+                                if (data.payload.pdf_url) {
+                                    buttonsHtml += `
+                                        <a href="${data.payload.pdf_url}" download style="text-decoration: none;">
+                                            <button class="copy-btn" style="color: var(--brand); border-color: var(--brand);">
+                                                📕 Download PDF (.pdf)
+                                            </button>
+                                        </a>
+                                    `;
+                                }
+                                buttonsHtml += `</div>`;
+                                exportNode.innerHTML = buttonsHtml;
+                                subContainer.appendChild(exportNode);
+                            }
+
+                            macroNode.addEventListener('click', (e) => {
+                                if (e.target.closest('.sub-container')) return;
+                                subContainer.classList.toggle('collapsed');
+                            });
+
+                            workspaceWrapper.appendChild(macroNode);
+                            currentActiveSubContainer = subContainer;
+                        }
+                        else if (data.type === "generating_case_summary") {
+                            if (currentActiveSubContainer) {
+                                const subStep = document.createElement('div');
+                                subStep.className = 'sub-step';
+                                subStep.textContent = `• ${data.summary || ''}`;
+                                currentActiveSubContainer.appendChild(subStep);
+                            }
+                        }
+                        else {
+                            if (currentActiveSubContainer) {
+                                const subStep = document.createElement('div');
+                                subStep.className = 'sub-step';
+                                let subText = data.summary || data.state_summary;
+                                if (data.type === 'gap_opened') subText = `Opened investigative gap for: ${data.payload.description}`;
+                                if (data.type === 'gap_filled') subText = `Successfully resolved investigative gap: ${data.payload.description || 'Verified'}`;
+                                if (data.type === 'gap_unresolved') subText = `Investigative gap left unresolved: ${data.payload.description}`;
+                                subStep.textContent = `• ${subText}`;
+                                currentActiveSubContainer.appendChild(subStep);
+                            }
+                        }
+                        chatContainer.scrollTop = chatContainer.scrollHeight;
+                    }
+                }
+            }
+        } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+            answerBox.innerHTML += `<br><span style="color: var(--error);">⚠️ Connection error: ${errorMsg}</span>`;
+            if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
+                answerBox.innerHTML += `<br><span style="color: var(--text-muted); font-size: 0.85rem;">Make sure the FastAPI backend server is running on the same host and port. Try restarting it.</span>`;
+            }
+        } finally {
+            inputField.disabled = false;
+            sendBtn.disabled = false;
+            inputField.focus();
+        }
+    }
+
+    async function sendQuery() {
+            const message = inputField.value.trim();
+            if (!message) return;
+
+            // ── Auto-sync workspace if stale ─────────────────────────────
+            if (workspaceNeedsSync && workspaceFolderHandle) {
+                const statusEl = document.getElementById('workspace-status');
+                statusEl.innerHTML = '⏳ <span style="color:var(--warning)">Workspace out of date — auto-syncing...</span>';
+                try {
+                    await runWorkspaceSync();
+                } catch (e) {
+                    console.warn('Auto-sync failed, proceeding anyway:', e);
+                }
+            }
+
+            inputField.value = '';
+            inputField.disabled = true;
+            sendBtn.disabled = true;
+
+            const userBlock = document.createElement('div');
+            userBlock.className = 'message-block user-message';
+            userBlock.textContent = message;
+            chatContainer.appendChild(userBlock);
+
+            // Persist user message immediately so conversations are durable
+            try {
+                fetch(`/api/conversations/messages?session_id=${encodeURIComponent(sessionId)}&role=user&content=${encodeURIComponent(message)}`, { method: 'POST' });
+            } catch (e) {
+                // ignore persistence errors on client
+            }
+
+            const agentBlock = document.createElement('div');
+            agentBlock.className = 'message-block agent-message';
+            
+            const masterToggle = document.createElement('button');
+            masterToggle.className = 'master-toggle';
+            masterToggle.innerHTML = 'Show Technical Workspace';
+            
+            const workspaceWrapper = document.createElement('div');
+            workspaceWrapper.className = 'workspace-wrapper';
+
+            const answerContainer = document.createElement('div');
+            answerContainer.className = 'answer-container';
+            const answerBox = document.createElement('div');
+            answerBox.className = 'final-answer';
+            
+            const copyBar = document.createElement('div');
+            copyBar.className = 'copy-action-bar';
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-btn';
+            copyBtn.innerHTML = `
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copy Answer
+            `;
+            
+            let rawMarkdownText = "";
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(rawMarkdownText || answerBox.innerText);
+                copyBtn.innerHTML = `
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span style="color: var(--success)">Copied!</span>
+                `;
+                setTimeout(() => {
+                    copyBtn.innerHTML = `
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy Answer
+                    `;
+                }, 1600);
+            };
+
+            copyBar.appendChild(copyBtn);
+            answerContainer.appendChild(answerBox);
+            answerContainer.appendChild(copyBar);
+
+            masterToggle.onclick = () => {
+                workspaceWrapper.classList.toggle('run-collapsed');
+                masterToggle.innerHTML = workspaceWrapper.classList.contains('run-collapsed') ? 'Show Technical Workspace' : 'Hide Technical Workspace';
+            };
+
+            agentBlock.appendChild(masterToggle);
+            agentBlock.appendChild(workspaceWrapper);
+            agentBlock.appendChild(answerContainer);
+            chatContainer.appendChild(agentBlock);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            let currentActiveSubContainer = null;
+            let currentActiveMacroNode = null;
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        message: message,
+                        kenya_legal_mode: true,
+                        strict_mode: true,
+                        deep_research: deepResearchToggle ? deepResearchToggle.checked : false,
+                        workspace_tree: workspaceFiles
+                    })
+                });
+
+                if (!response.ok) {
+                    let errorDetail = `Server returned ${response.status}`;
+                    try {
+                        const errBody = await response.json();
+                        if (errBody.detail) errorDetail = errBody.detail;
+                    } catch {}
+                    throw new Error(`Backend error: ${errorDetail}`);
+                }
+
+                if (!response.body) {
+                    throw new Error('Backend returned an empty body. The server may have crashed or is not a streaming endpoint. Make sure the FastAPI backend is running.');
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    let lines = buffer.split('\n\n');
+                    buffer = lines.pop();
+
+                    for (let line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = JSON.parse(line.substring(6));
+                            
+                            if (data.type === "answer_token") {
+                                rawMarkdownText += data.payload.token;
+                                const formattedMarkdown = formatCitations(rawMarkdownText);
+                                answerBox.innerHTML = marked.parse(formattedMarkdown);
+                            } 
+                            else if (data.type === "run_finished") {
+                                if (currentActiveSubContainer) currentActiveSubContainer.classList.add('collapsed');
+                                if (currentActiveMacroNode) currentActiveMacroNode.classList.remove('active');
+                                workspaceWrapper.classList.add('run-collapsed');
+                                masterToggle.style.display = 'block';
+                                copyBar.classList.add('visible');
+                            }
+                            else if (MACRO_STEPS.includes(data.type)) {
+                                // Close out and collapse the previous block automatically
+                                if (currentActiveSubContainer) {
+                                    currentActiveSubContainer.classList.add('collapsed');
+                                }
+                                if (currentActiveMacroNode) {
+                                    currentActiveMacroNode.classList.remove('active');
+                                }
+
+                                // Create clean narrative anchor state header
+                                const macroNode = document.createElement('div');
+                                macroNode.className = 'macro-node active';
+                                currentActiveMacroNode = macroNode;
+
+                                let narrativeText = data.state_summary || data.summary;
+                                if (data.type === 'basis_assessed') {
+                                    narrativeText = `I have evaluated the evidence and assessed the basis strength as ${data.payload.basis_strength.replace('_', ' ').toUpperCase()}.`;
+                                }
+
+                                macroNode.innerHTML = `<span class="macro-summary">${narrativeText}</span>`;
+
+                                // Sub-container holds the nested, detailed operational steps
+                                const subContainer = document.createElement('div');
+                                subContainer.className = 'sub-container';
+                                macroNode.appendChild(subContainer);
+
+                                // Special rendering: clarification form
+                                if (data.type === 'clarification_requested') {
+                                    currentClarificationQuestions = data.payload.questions;
+                                    const formBlock = document.createElement('div');
+                                    formBlock.style.padding = "16px";
+                                    formBlock.style.background = "var(--surface)";
+                                    formBlock.style.borderRadius = "8px";
+                                    formBlock.innerHTML = `<span style="color: var(--warning); margin-bottom: 10px; display:block; font-weight:600;">Clarification Parameters Needed</span>`;
+                                    
+                                    currentClarificationQuestions.forEach((q, idx) => {
+                                        formBlock.innerHTML += `
+                                            <div style="margin-bottom: 10px;">
+                                                <label style="display:block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-main);">${q}</label>
+                                                <input type="text" id="clarify-ans-${idx}" style="width: 100%; background: #000; border: 1px solid var(--border); color: #fff; padding: 6px; border-radius: 4px; font-size: 0.85rem;">
+                                            </div>
+                                        `;
+                                    });
+                                    
+                                    const submitBtn = document.createElement('button');
+                                    submitBtn.className = 'copy-btn';
+                                    submitBtn.style.marginTop = "6px";
+                                    submitBtn.textContent = "Submit Parameters & Resume";
+                                    submitBtn.onclick = async () => {
+                                        let answers = {};
+                                        currentClarificationQuestions.forEach((q, idx) => {
+                                            answers[q] = document.getElementById(`clarify-ans-${idx}`).value;
+                                        });
+                                        formBlock.remove();
+                                        // Re-fire submission with answers
+                                        resumeExecutionWithAnswers(message, answers);
+                                    };
+                                    formBlock.appendChild(submitBtn);
+                                    subContainer.appendChild(formBlock);
+                                }
+
+                                // Special rendering: case summary
+                                if (data.type === 'case_summary_ready') {
+                                    const summaryBlock = document.createElement('div');
+                                    summaryBlock.className = 'sub-step';
+                                    summaryBlock.style.borderLeft = "2px solid var(--brand)";
+                                    summaryBlock.style.paddingLeft = "10px";
+                                    summaryBlock.style.margin = "10px 0";
+                                    summaryBlock.innerHTML = `<b>📜 Volitional Brief [${data.title}]:</b><br>${marked.parse(data.payload.summary)}`;
+                                    subContainer.appendChild(summaryBlock);
+                                }
+
+                                // Special rendering: document workflow state transitions
+                                if (data.type === 'document_work_state') {
+                                    const docNode = document.createElement('div');
+                                    docNode.className = 'sub-step';
+                                    docNode.style.borderLeft = "2px solid var(--brand)";
+                                    docNode.style.paddingLeft = "10px";
+                                    docNode.style.margin = "10px 0";
+                                    docNode.innerHTML = `🖨️ <b>${data.title}:</b> ${data.state_summary || data.summary}`;
+                                    subContainer.appendChild(docNode);
+                                }
+
+                                // Special rendering: document workflow finished
+                                if (data.type === 'document_work_finished') {
+                                    const docFinish = document.createElement('div');
+                                    docFinish.className = 'sub-step';
+                                    docFinish.style.borderLeft = "2px solid var(--success)";
+                                    docFinish.style.paddingLeft = "10px";
+                                    docFinish.style.margin = "10px 0";
+                                    const payload = data.payload || {};
+                                    const outputs = payload.generated_outputs ? payload.generated_outputs.join(', ') : '(check payload)';
+                                    docFinish.innerHTML = `✅ <b>${data.title}:</b> ${data.summary}<br><span style="font-size:0.75rem; color: var(--text-muted);">Outputs: ${outputs} | Verified: ${payload.verification_passed}</span>`;
+                                    subContainer.appendChild(docFinish);
+                                }
+
+                                // Special rendering: download buttons for compiled artifacts
+                                if (data.type === 'document_export_success') {
+                                    const exportNode = document.createElement('div');
+                                    let buttonsHtml = `
+                                        <span class="macro-summary" style="color: var(--success)">📥 Download Compiled Artifacts</span>
+                                        <div style="display: flex; gap: 12px; margin-top: 10px;">
+                                            <a href="${data.payload.docx_url}" download style="text-decoration: none;">
+                                                <button class="copy-btn" style="color: var(--text-main); border-color: var(--border-focus);">
+                                                    📄 Download Word (.docx)
+                                                </button>
+                                            </a>
+                                    `;
+                                    if (data.payload.pdf_url) {
+                                        buttonsHtml += `
+                                            <a href="${data.payload.pdf_url}" download style="text-decoration: none;">
+                                                <button class="copy-btn" style="color: var(--brand); border-color: var(--brand);">
+                                                    📕 Download PDF (.pdf)
+                                                </button>
+                                            </a>
+                                        `;
+                                    }
+                                    buttonsHtml += `</div>`;
+                                    exportNode.innerHTML = buttonsHtml;
+                                    subContainer.appendChild(exportNode);
+                                }
+
+                                // Interactive toggle accordion logic: clicking a summary re-opens or collapses its sub-steps
+                                macroNode.addEventListener('click', (e) => {
+                                    if (e.target.closest('.sub-container')) return; // ignore sub-step clicks
+                                    subContainer.classList.toggle('collapsed');
+                                });
+
+                                workspaceWrapper.appendChild(macroNode);
+                                currentActiveSubContainer = subContainer;
+                            }
+                            else {
+                                // Populate nested container items
+                                if (currentActiveSubContainer) {
+                                    const subStep = document.createElement('div');
+                                    subStep.className = 'sub-step';
+                                    
+                                    let subText = data.summary || data.state_summary;
+                                    if (data.type === 'gap_opened') subText = `Opened investigative gap for: ${data.payload.description}`;
+                                    if (data.type === 'gap_filled') subText = `Successfully resolved investigative gap: ${data.payload.description || 'Verified'}`;
+                                    if (data.type === 'gap_unresolved') subText = `Investigative gap left unresolved: ${data.payload.description}`;
+                                    
+                                    subStep.textContent = `• ${subText}`;
+                                    currentActiveSubContainer.appendChild(subStep);
+                                }
+                            }
+                            chatContainer.scrollTop = chatContainer.scrollHeight;
+                        }
+                    }
+                }
+            } catch (err) {
+                const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+                answerBox.innerHTML += `<br><span style="color: var(--error);">⚠️ Connection error: ${errorMsg}</span>`;
+                if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
+                    answerBox.innerHTML += `<br><span style="color: var(--text-muted); font-size: 0.85rem;">Make sure the FastAPI backend server is running on the same host and port. Try restarting it.</span>`;
+                }
+            } finally {
+                inputField.disabled = false;
+                sendBtn.disabled = false;
+                inputField.focus();
+            }
+        }
+
+        /* =================================================================
+         * Workspace Sync Pipeline (Local-to-Cloud Markdown)
+         *
+         * 1. User picks a local folder via File System Access API
+         * 2. Files are parsed to Markdown in-browser (PDF, DOCX, TXT)
+         * 3. Manifest is pushed to server for diff computation
+         * 4. New/changed files are chunked and uploaded to Supabase
+         * 5. Agent reads from Supabase chunks
+         * ================================================================= */
+
+        let workspaceFolderHandle = null;   // FileSystemDirectoryHandle
+        function _wsUserId() { return currentUser ? currentUser.id : 'default'; }
+        function _authHeaders() {
+            const h = { 'Content-Type': 'application/json' };
+            if (authAccessToken) h['Authorization'] = 'Bearer ' + authAccessToken;
+            return h;
+        }
+        let workspaceSyncInProgress = false;
+        let workspaceNeedsSync = false;     // set true when local files differ from server
+        let _staleInterval = null;          // setInterval handle for staleness checks
+
+        // ── IndexedDB: persist directory handle across reloads ─────────
+
+        const WS_DB_NAME = 'orbit_workspace';
+        const WS_DB_VERSION = 1;
+
+        function _openWsDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(WS_DB_NAME, WS_DB_VERSION);
+                req.onupgradeneeded = () => {
+                    const db = req.result;
+                    if (!db.objectStoreNames.contains('handles')) {
+                        db.createObjectStore('handles');
+                    }
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function _saveHandle(id, handle) {
+            const db = await _openWsDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction('handles', 'readwrite');
+                tx.objectStore('handles').put(handle, id);
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        async function _loadHandle(id) {
+            const db = await _openWsDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction('handles', 'readonly');
+                const req = tx.objectStore('handles').get(id);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function _deleteHandle(id) {
+            const db = await _openWsDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction('handles', 'readwrite');
+                tx.objectStore('handles').delete(id);
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        // ── File parsing (PDF, DOCX, TXT → Markdown) ─────────────────
+
+        async function _fileToMarkdown(file) {
+            const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : '';
+
+            // TXT / plain text
+            if (ext === 'txt' || ext === 'md' || ext === 'json' || ext === 'csv' || ext === 'html' || ext === 'xml') {
+                const text = await file.text();
+                return '```\n' + text + '\n```';
+            }
+
+            // Markdown files — read as-is
+            if (ext === 'md' || ext === 'markdown') {
+                return await file.text();
+            }
+
+            // PDF
+            if (ext === 'pdf') {
+                const buf = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+                let md = `# ${file.name}\n\n`;
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const text = textContent.items.map(item => item.str).join(' ');
+                    md += `## Page ${i}\n\n${text}\n\n`;
+                }
+                return md;
+            }
+
+            // DOCX
+            if (ext === 'docx') {
+                const buf = await file.arrayBuffer();
+                const result = await mammoth.convertToMarkdown({ arrayBuffer: buf });
+                return result.value || `# ${file.name}\n\n_No extractable text._`;
+            }
+
+            // Fallback
+            try {
+                const text = await file.text();
+                return '```\n' + text.slice(0, 50000) + '\n```';
+            } catch {
+                return `# ${file.name}\n\n_Binary file — no text extracted._`;
+            }
+        }
+
+        // ── Chunk markdown into ~2000-char segments at paragraph boundaries ──
+
+        function _chunkMarkdown(md) {
+            const chunks = [];
+            const paragraphs = md.split(/\n\n+/);
+            let current = '';
+            for (const p of paragraphs) {
+                if (current.length + p.length > 2000 && current.length > 0) {
+                    chunks.push(current.trim());
+                    current = '';
+                }
+                current += p + '\n\n';
+            }
+            if (current.trim()) chunks.push(current.trim());
+            if (chunks.length === 0 && md.trim()) chunks.push(md.trim());
+            return chunks;
+        }
+
+        // ── Hash a file for dedup ──────────────────────────────────────
+
+        async function _sha256(file) {
+            const buf = await file.arrayBuffer();
+            const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+            const hashArr = Array.from(new Uint8Array(hashBuf));
+            return hashArr.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // ── Build local manifest from a directory handle ────────────────
+
+        async function _buildLocalManifest(dirHandle, basePath = '') {
+            const entries = [];
+            for await (const entry of dirHandle.values()) {
+                const relPath = basePath ? basePath + '/' + entry.name : entry.name;
+                if (entry.kind === 'directory') {
+                    const sub = await _buildLocalManifest(entry, relPath);
+                    entries.push(...sub);
+                } else if (entry.kind === 'file') {
+                    const file = await entry.getFile();
+                    const hash = await _sha256(file);
+                    entries.push({
+                        file_path: relPath,
+                        file_name: entry.name,
+                        file_size: file.size,
+                        file_hash: hash,
+                        last_modified: file.lastModified,
+                    });
+                }
+            }
+            return entries;
+        }
+
+        // ── Sync one file: parse → chunk → upload ─────────────────────
+
+        async function _syncFile(dirHandle, filePath, onProgress) {
+            // Navigate the directory tree to find the file handle
+            const parts = filePath.split('/');
+            let handle = dirHandle;
+            for (let i = 0; i < parts.length; i++) {
+                if (i === parts.length - 1) {
+                    handle = await handle.getFileHandle(parts[i]);
+                } else {
+                    handle = await handle.getDirectoryHandle(parts[i]);
+                }
+            }
+            const file = await handle.getFile();
+
+            if (onProgress) onProgress(filePath, 'parsing');
+            const md = await _fileToMarkdown(file);
+            const chunks = _chunkMarkdown(md);
+            const mdSize = new Blob([md]).size;
+
+            if (onProgress) onProgress(filePath, 'uploading', chunks.length);
+
+            const resp = await fetch('/api/workspace/upload-chunks', {
+                method: 'POST',
+                headers: _authHeaders(),
+                body: JSON.stringify({
+                    user_id: _wsUserId(),
+                    file: {
+                        file_path: filePath,
+                        file_name: file.name,
+                        file_size: file.size,
+                        file_hash: await _sha256(file),
+                        last_modified: file.lastModified,
+                    },
+                    chunks: chunks,
+                    markdown_size: mdSize,
+                }),
+            });
+            const result = await resp.json();
+            if (result.error) throw new Error(result.error + ' — needed ' + result.needed + 'B, available ' + (result.available || 0) + 'B');
+            if (onProgress) onProgress(filePath, 'done', result.chunks_uploaded);
+            return result;
+        }
+
+        // ── Staleness Detection ─────────────────────────────────────────
+        // Walks the directory handle (metadata only — no content reads) and
+        // compares file sizes + lastModified against the server manifest.
+        // Sets workspaceNeedsSync = true if any file differs.
+
+        async function _checkWorkspaceStale() {
+            if (!workspaceFolderHandle) return;
+            if (workspaceSyncInProgress) return;
+            try {
+                // Build current local manifest (fast — just metadata from handles)
+                const localManifest = await _buildLocalManifest(workspaceFolderHandle);
+                // Fetch server manifest
+                const resp = await fetch(`/api/workspace/manifest?user_id=${encodeURIComponent(_wsUserId())}`, { headers: _authHeaders() });
+                if (!resp.ok) return;
+                const serverFiles = await resp.json();
+                if (!serverFiles || serverFiles.length === 0) {
+                    // No files on server but files locally → needs sync
+                    if (localManifest.length > 0) {
+                        _markStale(true, localManifest.length + ' file(s) not yet synced.');
+                        return;
+                    }
+                    _markStale(false, '');
+                    return;
+                }
+                // Build server lookup by file_path
+                const serverMap = {};
+                for (const sf of serverFiles) serverMap[sf.file_path] = sf;
+
+                let changed = 0;
+                for (const lf of localManifest) {
+                    const sf = serverMap[lf.file_path];
+                    if (!sf) { changed++; continue; }  // new file
+                    // Compare lastModified (server stores as number)
+                    if (lf.last_modified !== sf.last_modified) { changed++; continue; }
+                    if (lf.file_size !== sf.file_size) { changed++; continue; }
+                }
+                // Check for deleted files
+                for (const sf of serverFiles) {
+                    if (!localManifest.find(l => l.file_path === sf.file_path)) changed++;
+                }
+
+                if (changed > 0) {
+                    _markStale(true, changed + ' file(s) changed since last sync.');
+                } else {
+                    _markStale(false, '');
+                }
+            } catch (e) {
+                console.warn('Staleness check failed:', e);
+            }
+        }
+
+        function _markStale(stale, msg) {
+            workspaceNeedsSync = stale;
+            const syncBtn = document.getElementById('ws-sync-btn');
+            const statusEl = document.getElementById('workspace-status');
+            if (stale) {
+                syncBtn.textContent = '⚠️ Sync Required — ' + msg;
+                syncBtn.style.borderColor = 'var(--warning)';
+                syncBtn.style.color = 'var(--warning)';
+                statusEl.innerHTML = '⚠️ <span style="color:var(--warning)">' + msg + ' Click Sync.</span>';
+            } else {
+                // Restore to default
+                const fileCount = document.getElementById('workspace-file-list').children.length;
+                syncBtn.textContent = '🔄 Sync to Cloud';
+                syncBtn.style.borderColor = '';
+                syncBtn.style.color = '';
+                statusEl.innerHTML = fileCount + ' file(s) synced.';
+            }
+        }
+
+        function _startStalenessWatcher() {
+            _stopStalenessWatcher();
+            // Check immediately, then every 60 seconds
+            _checkWorkspaceStale();
+            _staleInterval = setInterval(_checkWorkspaceStale, 60_000);
+        }
+
+        function _stopStalenessWatcher() {
+            if (_staleInterval) {
+                clearInterval(_staleInterval);
+                _staleInterval = null;
+            }
+        }
+
+        // ── Full sync pipeline ─────────────────────────────────────────
+
+        async function runWorkspaceSync() {
+            if (!workspaceFolderHandle) {
+                alert('Open a workspace folder first.');
+                return;
+            }
+            if (workspaceSyncInProgress) return;
+            workspaceSyncInProgress = true;
+            updateWorkspaceUI('syncing', 'Building file manifest...');
+
+            try {
+                // 1. Build local manifest
+                const localManifest = await _buildLocalManifest(workspaceFolderHandle);
+                updateWorkspaceUI('syncing', `Comparing ${localManifest.length} file(s) with server...`);
+
+                // 2. Push to server for diff
+                const diffResp = await fetch('/api/workspace/sync', {
+                    method: 'POST',
+                    headers: _authHeaders(),
+                    body: JSON.stringify({
+                    user_id: _wsUserId(),
+                    tier: 'free',
+                    local_manifest: localManifest,
+                }),
+            });
+            const diff = await diffResp.json();
+            if (diff.error) { updateWorkspaceUI('error', diff.error); return; }
+
+            const toAdd = diff.files_to_add || [];
+            const toUpdate = diff.files_to_update || [];
+            const toDelete = diff.files_to_delete || [];
+
+            if (toAdd.length === 0 && toUpdate.length === 0 && toDelete.length === 0) {
+                updateWorkspaceUI('idle', `All ${localManifest.length} file(s) are up to date.`);
+                await refreshManifestUI();
+                workspaceSyncInProgress = false;
+                return;
+            }
+
+            // 3. Delete removed files
+            for (const fp of toDelete) {
+                await fetch('/api/workspace/delete', {
+                    method: 'POST',
+                    headers: _authHeaders(),
+                    body: JSON.stringify({ user_id: _wsUserId(), file_path: fp }),
+                });
+            }
+
+                // 4. Upload new/changed files
+                const allToSync = [...toAdd, ...toUpdate];
+                let synced = 0;
+                const fileStatus = document.getElementById('ws-file-status');
+                fileStatus.style.display = 'block';
+
+                for (const f of allToSync) {
+                    fileStatus.textContent = `[${synced + 1}/${allToSync.length}] ${f.file_path} — parsing...`;
+                    try {
+                        await _syncFile(workspaceFolderHandle, f.file_path, (path, stage, count) => {
+                            if (stage === 'parsing') fileStatus.textContent = `[${synced + 1}/${allToSync.length}] ${path} — converting to markdown...`;
+                            else if (stage === 'uploading') fileStatus.textContent = `[${synced + 1}/${allToSync.length}] ${path} — uploading ${count} chunk(s)...`;
+                            else if (stage === 'done') fileStatus.textContent = `[${synced + 1}/${allToSync.length}] ${path} — done (${count} chunks)`;
+                        });
+                        synced++;
+                    } catch (e) {
+                        fileStatus.textContent = `[${synced + 1}/${allToSync.length}] ${f.file_path} — FAILED: ${e.message}`;
+                        console.error('Sync failed for', f.file_path, e);
+                    }
+                }
+
+                fileStatus.textContent = `Sync complete: ${synced} file(s) uploaded, ${toDelete.length} deleted.`;
+                await refreshManifestUI();
+                await refreshQuotaUI();
+                _markStale(false, '');  // clear staleness
+                _startStalenessWatcher();  // restart watcher with fresh baseline
+                updateWorkspaceUI('idle', `${synced} file(s) synced. ${localManifest.length} total.`);
+
+            } catch (e) {
+                updateWorkspaceUI('error', e.message);
+                console.error('Sync error:', e);
+            } finally {
+                workspaceSyncInProgress = false;
+                setTimeout(() => { document.getElementById('ws-file-status').style.display = 'none'; }, 5000);
+            }
+        }
+
+        // ── Pick folder via FS API ────────────────────────────────────
+
+        async function pickWorkspaceFolder() {
+            if (!window.showDirectoryPicker) {
+                alert('File System Access API requires Chrome, Edge, or Opera 86+.');
+                return;
+            }
+            try {
+                const handle = await window.showDirectoryPicker();
+                workspaceFolderHandle = handle;
+                await _saveHandle('workspace_root', handle);
+                document.getElementById('ws-folder-name').textContent = handle.name;
+                document.getElementById('ws-folder-name').style.display = 'inline';
+                updateWorkspaceUI('ready', `Folder "${handle.name}" selected. Click Sync.`);
+                // Auto-run a sync
+                await runWorkspaceSync();
+                _startStalenessWatcher();
+            } catch (e) {
+                if (e.name === 'AbortError') return;
+                updateWorkspaceUI('error', e.message);
+            }
+        }
+
+        // ── Restore saved handle on page load ─────────────────────────
+
+        async function restoreWorkspaceHandle() {
+            const handle = await _loadHandle('workspace_root');
+            if (handle) {
+                try {
+                    // Re-authorize — browser resets permissions on reload
+                    const ok = await handle.requestPermission({ mode: 'read' });
+                    if (ok === 'granted') {
+                        workspaceFolderHandle = handle;
+                        document.getElementById('ws-folder-name').textContent = handle.name;
+                        document.getElementById('ws-folder-name').style.display = 'inline';
+                        document.getElementById('ws-restore-btn').style.display = 'none';
+                        updateWorkspaceUI('ready', `"${handle.name}" — reconnected. Click Sync.`);
+                        await refreshManifestUI();
+                        await refreshQuotaUI();
+                        _startStalenessWatcher();
+                    }
+                } catch {
+                    // Permission denied — show restore button
+                    document.getElementById('ws-restore-btn').style.display = 'block';
+                }
+            }
+        }
+
+        // ── UI update helpers ─────────────────────────────────────────
+
+        function updateWorkspaceUI(state, msg) {
+            const el = document.getElementById('workspace-status');
+            const errEl = document.getElementById('workspace-err');
+            const listEl = document.getElementById('workspace-file-list');
+            if (state === 'syncing') {
+                el.textContent = '⏳ ' + msg;
+                errEl.style.display = 'none';
+                document.getElementById('ws-sync-btn').disabled = true;
+            } else if (state === 'error') {
+                el.textContent = '❌ ' + msg;
+                errEl.textContent = msg;
+                errEl.style.display = 'block';
+                document.getElementById('ws-sync-btn').disabled = false;
+            } else if (state === 'idle') {
+                el.textContent = msg;
+                errEl.style.display = 'none';
+                document.getElementById('ws-sync-btn').disabled = false;
+            } else if (state === 'ready') {
+                el.textContent = msg;
+                errEl.style.display = 'none';
+                document.getElementById('ws-sync-btn').disabled = false;
+            }
+        }
+
+        async function refreshManifestUI() {
+            const listEl = document.getElementById('workspace-file-list');
+            try {
+                const resp = await fetch(`/api/workspace/manifest?user_id=${encodeURIComponent(_wsUserId())}`, { headers: _authHeaders() });
+                if (!resp.ok) return;
+                const files = await resp.json();
+                listEl.innerHTML = '';
+                if (!files || files.length === 0) {
+                    listEl.innerHTML = '<div class="ws-file-entry" style="color:#555;">No synced files.</div>';
+                } else {
+                    files.forEach(f => {
+                        const div = document.createElement('div');
+                        div.className = 'ws-file-entry';
+                        const icon = f.file_name.endsWith('.pdf') ? '📕' :
+                                     f.file_name.endsWith('.docx') ? '📝' : '📄';
+                        const sizeKB = (f.markdown_size / 1024).toFixed(1);
+                        div.innerHTML = '<span class="ws-icon">' + icon + '</span>' +
+                            '<span>' + f.file_path + '</span>' +
+                            '<span class="ws-size">' + sizeKB + 'KB</span>';
+                        listEl.appendChild(div);
+                    });
+                }
+            } catch { /* ignore */ }
+        }
+
+        async function refreshQuotaUI() {
+            try {
+                const resp = await fetch(`/api/workspace/quota?user_id=${encodeURIComponent(_wsUserId())}`, { headers: _authHeaders() });
+                if (!resp.ok) return;
+                const q = await resp.json();
+                const usedMB = (q.used_bytes / 1048576).toFixed(1);
+                const maxMB = (q.max_bytes / 1048576).toFixed(0);
+                document.getElementById('ws-quota').textContent = `Quota: ${usedMB}MB / ${maxMB}MB`;
+            } catch { /* ignore */ }
+        }
+
+        function disconnectWorkspace() {
+            _stopStalenessWatcher();
+            workspaceFolderHandle = null;
+            _deleteHandle('workspace_root');
+            document.getElementById('ws-folder-name').textContent = '';
+            document.getElementById('ws-folder-name').style.display = 'none';
+            document.getElementById('workspace-file-list').innerHTML = '<div class="ws-file-entry" style="color:#555;">No synced files.</div>';
+            _markStale(false, '');
+            updateWorkspaceUI('ready', 'Workspace disconnected. Pick a folder to start.');
+        }
+
+        // ── Wire UI elements ──────────────────────────────────────────
+
+        document.getElementById('ws-pick-btn').addEventListener('click', pickWorkspaceFolder);
+        document.getElementById('ws-sync-btn').addEventListener('click', runWorkspaceSync);
+        document.getElementById('ws-disconnect-btn').addEventListener('click', disconnectWorkspace);
+        document.getElementById('ws-restore-btn').addEventListener('click', pickWorkspaceFolder);
+    </script>
+</body>
+</html>

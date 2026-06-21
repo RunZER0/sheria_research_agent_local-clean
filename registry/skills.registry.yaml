@@ -1,0 +1,142 @@
+# Sheria Skill Registry
+# Skills are specialized workflows, not ordinary discovery tools.
+# The agent invokes a skill when the user's requested output requires
+# a specialized procedure beyond simple chat.
+
+skills:
+
+  # ---------------------------------------------------------------------------
+  # DOCUMENT EXPORT SKILL
+  # ---------------------------------------------------------------------------
+  - name: document_export
+    purpose: >-
+      Export final legal research output into downloadable DOCX or PDF documents.
+      Formats the grounded answer and evidence table into a professional document.
+    when_to_use:
+      - User asks for a document (DOCX, PDF)
+      - User asks to export the results
+      - User requests memo or report formatting
+      - Final answer must be turned into a downloadable artifact
+      - User requests a formatted legal document
+    required_inputs:
+      - grounded_answer: str  # The final verified answer text
+      - evidence_table: list[EvidenceItem]  # Accepted evidence sources
+      - output_format: str  # "docx" or "pdf"
+      - title: str  # Document title
+      - citation_map: dict | None  # Optional mapping of source IDs to citations
+    output_artifacts:
+      - docx_path: str | None  # Path to generated DOCX file
+      - pdf_path: str | None  # Path to generated PDF file
+      - artifact_manifest_path: str | None  # Path to manifest JSON
+    preconditions:
+      - Final answer exists and passed verification
+      - Citations and evidence table exist
+      - Output format is known (DOCX or PDF)
+    procedure_reference: app/skills/document_export_skill.py
+    human_narrative_guidance: >-
+      "I have enough material. I'll now format the answer into a clean document."
+    observability_events:
+      - skill: document_export
+        event: started
+        fields: [input_answer_length, evidence_count, output_format, title]
+      - skill: document_export
+        event: format_complete
+        fields: [docx_generated, pdf_generated, pages_estimated]
+      - skill: document_export
+        event: finished
+        fields: [docx_path, pdf_path, verification_passed, warnings]
+
+  # ---------------------------------------------------------------------------
+  # LEGAL MEMO SKILL
+  # ---------------------------------------------------------------------------
+  - name: legal_memo
+    purpose: >-
+      Format the research output as a structured legal memorandum with
+      headings for issue, summary, applicable law, analysis, and conclusion.
+    when_to_use:
+      - User explicitly asks for a legal memo or memorandum
+      - User requests structured legal analysis
+      - Output should follow formal memo structure
+    required_inputs:
+      - grounded_answer: str
+      - evidence_table: list[EvidenceItem]
+      - memo_title: str | None
+    output_artifacts:
+      - formatted_memo: str
+      - memo_docx_path: str | None
+    preconditions:
+      - Grounded answer exists with accepted evidence
+    procedure_reference: app/skills/legal_memo_skill.py
+    human_narrative_guidance: >-
+      "I have the legal analysis ready. I'll now structure it as a formal memorandum."
+    observability_events:
+      - skill: legal_memo
+        event: started
+        fields: [evidence_count, memo_title]
+      - skill: legal_memo
+        event: sections_generated
+        fields: [section_count, total_length]
+      - skill: legal_memo
+        event: finished
+        fields: [memo_length, format]
+
+  # ---------------------------------------------------------------------------
+  # CASE BRIEF SKILL
+  # ---------------------------------------------------------------------------
+  - name: case_brief
+    purpose: >-
+      Generate a structured case brief from one or more judgment sources.
+      Extracts case name, citation, court, facts, issues, holding, ratio,
+      obiter, and significance.
+    when_to_use:
+      - User asks for a case brief or case summary
+      - User provides a case citation or judgment to summarize
+      - Multiple judgments need structured briefing
+    required_inputs:
+      - case_sources: list[EvidenceItem]  # Evidence items containing judgment text
+      - case_citation: str | None  # Known citation if available
+    output_artifacts:
+      - structured_brief: str
+      - brief_docx_path: str | None
+    preconditions:
+      - Case judgment text has been read and accepted as evidence
+    procedure_reference: app/skills/case_brief_skill.py
+    human_narrative_guidance: >-
+      "I'll now structure the case judgment into a clear brief covering facts, issues, and holding."
+    observability_events:
+      - skill: case_brief
+        event: started
+        fields: [case_count, citations]
+      - skill: case_brief
+        event: brief_ready
+        fields: [sections_generated, total_length]
+
+  # ---------------------------------------------------------------------------
+  # CITATION TABLE SKILL
+  # ---------------------------------------------------------------------------
+  - name: citation_table
+    purpose: >-
+      Generate a formatted table of all cited authorities with case names,
+      citations, jurisdictions, treatment, and relevance notes.
+    when_to_use:
+      - User requests a table of authorities or citations
+      - User asks for source list or bibliography
+      - Final answer needs an accompanying citation table
+    required_inputs:
+      - evidence_table: list[EvidenceItem]
+      - citation_format: str | None  # Optional format preference
+    output_artifacts:
+      - citation_table: str  # Formatted markdown or text table
+      - table_docx_path: str | None
+    preconditions:
+      - Evidence ledger has accepted sources
+    procedure_reference: app/skills/citation_table_skill.py
+    human_narrative_guidance: >-
+      "I'll compile a table of all authorities cited in the answer."
+    observability_events:
+      - skill: citation_table
+        event: started
+        fields: [source_count]
+      - skill: citation_table
+        event: table_ready
+        fields: [citation_count, format]

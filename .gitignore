@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+
+# Environment
+.env
+.env.local
+.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test / QA artifacts (generated during dev)
+qa_*.py
+qa_*.txt
+smoke_*.txt
+smoke_*.py
+*_debug.log
+*.log
+debug_*.py
+test_workspace_subagent.py
+test_orbit_agent.py
+
+# Project data
+artifacts/
+storage/
+data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project config
+.next/
+node_modules/
+dist/

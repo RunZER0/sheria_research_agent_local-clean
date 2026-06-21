@@ -1,0 +1,18 @@
+FOUND = "found"
+PROVISIONALLY_CLASSIFIED = "provisionally_classified"
+QUEUED_FOR_INSPECTION = "queued_for_inspection"
+OPENED = "opened"
+INSPECTED = "inspected"
+EVIDENCE_CANDIDATE = "evidence_candidate"
+EVIDENCE_ACCEPTED = "evidence_accepted"
+EVIDENCE_REJECTED = "evidence_rejected"
+USED_IN_ANSWER = "used_in_answer"
+NOT_USED = "not_used"
+UNREADABLE = "unreadable"
+
+# Non-use reasons
+NOT_SELECTED_DUE_TO_LIMIT = "not_selected_due_to_limit"
+NOT_SELECTED_DUPLICATE = "not_selected_duplicate"
+NOT_SELECTED_LOWER_RELEVANCE = "not_selected_lower_relevance"
+FALLBACK_ONLY = "fallback_only"
+REJECTED_FOR_QUALITY = "rejected_for_quality"
